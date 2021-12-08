@@ -9,8 +9,8 @@
 
 int DEBUG = 0;
 
-#define MAX_LAYOUT_LENGTH 12 // Assuming the longest one is `nec_vndr/jp`
-#define MAX_VARIANT_LENGTH 27 // Assuming the longest one is `tifinagh-extended-phonetic`
+#define MAX_LAYOUT_LENGTH 12 // Assuming the longest one is 'nec_vndr/jp'
+#define MAX_VARIANT_LENGTH 27 // Assuming the longest one is 'tifinagh-extended-phonetic'
 
 typedef struct Layout {
     char* layout;
@@ -37,7 +37,7 @@ int layoutCompare(const Layout* l1, const Layout* l2) {
 /*
  * Returns a char pointer to a string from the needle to '\n' or '\0'.
  *
- * Returns `NULL` if the needle cannot be found in the haystack
+ * Returns 'NULL' if the needle cannot be found in the haystack
  */
 char* parseValue(const char* haystack, const char* needle) {
     char* beginning_of_word = strstr(haystack, needle);
@@ -121,7 +121,11 @@ Layout* parseLayouts(const char* path) {
     char line[MAX_LAYOUT_LENGTH+MAX_VARIANT_LENGTH];
 
     if (f == NULL) {
-        fprintf(stderr, "An error occurred while parsing `%s`! ERROR: %s\n", path, strerror(errno));
+        if (errno == 2) {
+            fprintf(stderr, "'%s' doesn't exist!\n", path);
+            exit(1);
+        }
+        fprintf(stderr, "An error occurred while parsing '%s'! ERROR: %s\n", path, strerror(errno));
         exit(1);
     }
 
@@ -188,7 +192,7 @@ int main() {
     Layout* temp;
 
     if (DEBUG) {
-        printf("[DEBUG] Indexed layouts from `%s`:\n", path);
+        printf("[DEBUG] Indexed layouts from '%s':\n", path);
         temp = layouts;
         while(temp != NULL) {
             printf("    [*] %s-%s\n", temp->layout, temp->variant);
@@ -207,12 +211,12 @@ int main() {
     if (!next_layout) next_layout = layouts;
     setNewLayout(next_layout);
 
-    if (DEBUG) printf("[DEBUG] Set new layout `%s-%s`\n", next_layout->layout, next_layout->variant);
+    if (DEBUG) printf("[DEBUG] Set new layout '%s-%s'\n", next_layout->layout, next_layout->variant);
 
     if (!next_layout->variant)
-        printf("Set `%s` layout\n", next_layout->layout);
+        printf("Set '%s' layout\n", next_layout->layout);
     else
-        printf("Set `%s-%s` layout\n", next_layout->layout, next_layout->variant);
+        printf("Set '%s-%s' layout\n", next_layout->layout, next_layout->variant);
 
     return 0;
 }

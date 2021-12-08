@@ -6,3 +6,7 @@ stringlib.o: stringlib.c
 	gcc -c stringlib.c
 clean:
 	rm main.o layout-switcher
+install: layout-switcher
+	cp ./layout-switcher /usr/local/bin/	
+uninstall:
+	rm /usr/local/bin/layout-switcher

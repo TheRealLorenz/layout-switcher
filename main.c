@@ -102,11 +102,9 @@ char* getCurrentLayout() {
 /*
  * Expands the given path using the HOME env variable
  *
- * Returna NULL if the given path doesn't start with '~'
  */
 char* expandPath(const char* path) {
     const char* home = getenv("HOME");
-    if (path[0] != '~') { return NULL; }
     path++;
     int n = strlen(path) + strlen(home);
     char* expandedPath = (char*) malloc(n+1);
@@ -178,7 +176,29 @@ void deallocateLayout(Layout* l) {
     free(l);
 }
 
-int main() {
+int main(int argc, char** argv) {
+    const char* path = "~/.config/layouts.conf";
+
+    argv++;
+    argc--;
+    while(argc > 0) {
+        if (DEBUG)
+            printf("[DEBUG] Parsing argument '%s': ", *argv);
+        if ((strcmp(*argv, "--path-to-file") == 0 || strcmp(*argv, "-p") == 0) && argc > 1) {
+            argv++;
+            argc--;
+            path = *argv;
+            if (DEBUG)
+                printf("updating pah to '%s'\n", path);
+        } else if (strcmp(*argv, "--debug") == 0 || strcmp(*argv, "-d") == 0) {
+            DEBUG = 1;
+            if (DEBUG)
+                printf("set DEBUG flag\n");
+        }
+        argv++;
+        argc--;
+    }
+
     char* stringa = getCurrentLayout();
     Layout* currentLayout = (Layout*)malloc(sizeof(Layout));
     currentLayout->layout = parseValue(stringa, "layout");
@@ -187,8 +207,9 @@ int main() {
 
     if (DEBUG) printf("[DEBUG] Current config: %s-%s\n", currentLayout->layout, currentLayout->variant);
 
-    const char* path = "~/.config/layouts.conf";
-    Layout* layouts = parseLayouts(expandPath(path));
+    Layout* layouts;
+    if (path[0] == '~')  { layouts = parseLayouts(expandPath(path)); }
+    else  { layouts = parseLayouts(path); }
     Layout* temp;
 
     if (DEBUG) {

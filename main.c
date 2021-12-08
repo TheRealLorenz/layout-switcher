@@ -4,15 +4,17 @@
 #include <sys/wait.h>
 #include <errno.h>
 #include <string.h>
+#include "stringlib.h"
 
-#define MAX_LAYOUT_LENGTH 10
+#define MAX_LAYOUT_LENGTH 12 // Assuming the longest one is `nec_vndr/jp`
+#define MAX_VARIANT_LENGTH 27 // Assuming the longest one is `tifinagh-extended-phonetic`
 
 /*
  * Returns a char pointer to a string from the needle to '\n' or '\0'.
  *
  * Returns `NULL` if the needle cannot be found in the haystack
  */
-char* strgrep(const char* haystack, const char* needle) {
+char* parseValue(const char* haystack, const char* needle) {
     char* beginning_of_word = strstr(haystack, needle);
     if (beginning_of_word == NULL) return NULL;
 
@@ -107,9 +109,9 @@ char* expandPath(const char* path) {
     return expandedPath;
 }
 
-void parseLayouts(char layouts[][MAX_LAYOUT_LENGTH], const char* path) {
+void parseLayouts(char layouts[][MAX_LAYOUT_LENGTH+MAX_VARIANT_LENGTH], const char* path) {
     FILE *f = fopen(path, "r");
-    char line[MAX_LAYOUT_LENGTH];
+    char line[MAX_LAYOUT_LENGTH+MAX_VARIANT_LENGTH];
     int i = 0;
 
     if (f == NULL) {
@@ -124,7 +126,7 @@ void parseLayouts(char layouts[][MAX_LAYOUT_LENGTH], const char* path) {
     }
 }
 
-void setNewLayout(const char* layout, const char* variant) {
+void setNewLayout(char** layout) {
     pid_t pid = fork();
 
         if (pid == -1) {
@@ -134,14 +136,14 @@ void setNewLayout(const char* layout, const char* variant) {
 
     if (pid == 0) {
         // figlio
-        printf("[DEBUG] Layout to be set: %s\n", layout);
-        printf("[DEBUG] Variant to be set: %s\n", variant);
+        printf("[DEBUG] Layout to be set: %s\n", layout[0]);
+        printf("[DEBUG] Variant to be set: %s\n", layout[1]);
 
-        if (!variant) {
-            execlp("setxkbmap", "setxkbmap", layout, (char *)0);
+        if (!layout[1]) {
+            execlp("setxkbmap", "setxkbmap", layout[0], (char *)0);
             exit(0);
         }
-        execlp("setxkbmap", "setxkbmap", layout, "-variant", variant, (char *)0);
+        execlp("setxkbmap", "setxkbmap", layout[0], "-variant", layout[1], (char *)0);
         exit(0);
     }
 
@@ -151,16 +153,13 @@ void setNewLayout(const char* layout, const char* variant) {
 
 int main() {
     char* stringa = getCurrentLayout();
-    char* layout = strgrep(stringa, "layout");
-    char* variant = strgrep(stringa, "variant");
+    char* layout = parseValue(stringa, "layout");
+    char* variant = parseValue(stringa, "variant");
     char* current_layout;
     free(stringa);
 
     if (variant) {
-        current_layout = (char*) malloc(sizeof(layout) + sizeof(variant) + 2);
-        strcpy(current_layout, layout);
-        strcat(current_layout, "-");
-        strcat(current_layout, variant);
+        current_layout = strcatchr(layout, variant, '-');
         free(layout);
         free(variant);
     } else {
@@ -171,7 +170,7 @@ int main() {
 
     const char* path = "~/.config/layouts.conf";
     int nLayouts = countFileLines(expandPath(path));
-    char layouts[nLayouts][MAX_LAYOUT_LENGTH];
+    char layouts[nLayouts][MAX_LAYOUT_LENGTH+MAX_VARIANT_LENGTH];
     parseLayouts(layouts, expandPath(path));
 
     printf("[DEBUG] Indexed %d layouts from `%s`\n", nLayouts, path);
@@ -191,16 +190,8 @@ int main() {
     if (++index == nLayouts) index = 0;
     printf("[DEBUG] Next index: %d\n", index);
 
-    if (!strchr(layouts[index], '-')) {
-        setNewLayout(layouts[index], NULL); 
-    } else {
-        char* layout = (char*) malloc(strchr(layouts[index], '-') - layouts[index] + 1);
-        layout = strncpy(layout, layouts[index], strchr(layouts[index], '-') - layouts[index]);
-        layout[2] = '\0';
-        char* variant = strchr(layouts[index], '-')+1;
-        setNewLayout(layout, variant);
-        free(layout);
-    }
+    char** new_layout = strsplitchr(layouts[index], '-');
+    setNewLayout(new_layout);
 
     printf("[DEBUG] Set new layout `%s`\n", layouts[index]);
 

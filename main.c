@@ -246,10 +246,18 @@ int main(int argc, char** argv) {
 
     if (DEBUG) printf("[DEBUG] Set new layout '%s-%s'\n", next_layout->layout, next_layout->variant);
 
-    if (!next_layout->variant)
+    char* body = (char*)malloc(100);
+    if (!next_layout->variant) {
         printf("Set '%s' layout\n", next_layout->layout);
-    else
+        sprintf(body, "Switching to %s", next_layout->layout);
+    }
+    else {
         printf("Set '%s-%s' layout\n", next_layout->layout, next_layout->variant);
+        sprintf(body, "Switching to %s-%s", next_layout->layout, next_layout->variant);
+    }
+
+    execlp("notify-send", "notify-send", "Layout Switcher", body, "-t", "2000", (char*)0);
+    free(body);
 
     return 0;
 }

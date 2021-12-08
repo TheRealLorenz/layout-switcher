@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <errno.h>
@@ -8,6 +9,28 @@
 
 #define MAX_LAYOUT_LENGTH 12 // Assuming the longest one is `nec_vndr/jp`
 #define MAX_VARIANT_LENGTH 27 // Assuming the longest one is `tifinagh-extended-phonetic`
+
+typedef struct Layout {
+    char* layout;
+    char* variant;
+    struct Layout* next;
+} Layout;
+
+/*
+ * Compares the content of the pointers to Layout struct
+ */
+int layoutCompare(const Layout* l1, const Layout* l2) {
+    if (l1->variant && !l2->variant) return 1;
+    if (!l1->variant && l2->variant) return -1;
+    if (l1->variant && l2->variant) {
+        if (strcmp(l1->variant, l2->variant) > 0) return 1;
+        if (strcmp(l1->variant, l2->variant) < 0) return -1;
+    }
+
+    if (strcmp(l1->layout, l2->layout) > 0) return 1;
+    if (strcmp(l1->layout, l2->layout) < 0 ) return -1;
+    return 0;
+}
 
 /*
  * Returns a char pointer to a string from the needle to '\n' or '\0'.
@@ -74,25 +97,6 @@ char* getCurrentLayout() {
     return new_string;
 }
 
-int countFileLines(const char* path) {
-    FILE *f = fopen(path, "r");
-    char ch;
-    int linesCount = 0;
-    
-    if (f == NULL) {
-        fprintf(stderr, "An error occurred while parsing `%s`! ERROR: %s\n", path, strerror(errno));
-        exit(1);
-    }
-
-    while((ch=fgetc(f))!=EOF) {
-      if(ch=='\n')
-         linesCount++;
-    }
-    
-    fclose(f);
-    return linesCount;
-}
-
 /*
  * Expands the given path using the HOME env variable
  *
@@ -109,24 +113,38 @@ char* expandPath(const char* path) {
     return expandedPath;
 }
 
-void parseLayouts(char layouts[][MAX_LAYOUT_LENGTH+MAX_VARIANT_LENGTH], const char* path) {
+Layout* parseLayouts(const char* path) {
     FILE *f = fopen(path, "r");
+    Layout* head = NULL;
     char line[MAX_LAYOUT_LENGTH+MAX_VARIANT_LENGTH];
-    int i = 0;
 
     if (f == NULL) {
         fprintf(stderr, "An error occurred while parsing `%s`! ERROR: %s\n", path, strerror(errno));
         exit(1);
     }
 
+    Layout* temp;
     while(fgets(line, sizeof(line), f)) {
         line[strlen(line) - 1] = '\0';
-        strcpy(layouts[i], line);
-        i++;
+        char** split = strsplitchr(line, '-');
+
+        if (!head) {
+            head = (Layout*)malloc(sizeof(Layout));
+            head->layout = split[0];
+            head->variant = split[1];
+            temp = head;
+        } else {
+            temp->next = (Layout*)malloc(sizeof(Layout));
+            temp = temp->next;
+            temp->layout = split[0];
+            temp->variant = split[1];
+        }
     }
+
+    return head;
 }
 
-void setNewLayout(char** layout) {
+void setNewLayout(Layout* layout) {
     pid_t pid = fork();
 
         if (pid == -1) {
@@ -136,14 +154,11 @@ void setNewLayout(char** layout) {
 
     if (pid == 0) {
         // figlio
-        printf("[DEBUG] Layout to be set: %s\n", layout[0]);
-        printf("[DEBUG] Variant to be set: %s\n", layout[1]);
-
-        if (!layout[1]) {
-            execlp("setxkbmap", "setxkbmap", layout[0], (char *)0);
+        if (!layout->variant) {
+            execlp("setxkbmap", "setxkbmap", layout->layout, (char *)0);
             exit(0);
         }
-        execlp("setxkbmap", "setxkbmap", layout[0], "-variant", layout[1], (char *)0);
+        execlp("setxkbmap", "setxkbmap", layout->layout, "-variant", layout->variant, (char *)0);
         exit(0);
     }
 
@@ -151,49 +166,43 @@ void setNewLayout(char** layout) {
     wait(NULL);
 }
 
+void deallocateLayout(Layout* l) {
+    free(l->layout);
+    free(l->variant);
+    free(l);
+}
+
 int main() {
     char* stringa = getCurrentLayout();
-    char* layout = parseValue(stringa, "layout");
-    char* variant = parseValue(stringa, "variant");
-    char* current_layout;
+    Layout* currentLayout = (Layout*)malloc(sizeof(Layout));
+    currentLayout->layout = parseValue(stringa, "layout");
+    currentLayout->variant = parseValue(stringa, "variant");
     free(stringa);
 
-    if (variant) {
-        current_layout = strcatchr(layout, variant, '-');
-        free(layout);
-        free(variant);
-    } else {
-        current_layout = layout;
-    }
-
-    printf("[DEBUG] Current config: %s\n", current_layout);
+    printf("[DEBUG] Current config: %s-%s\n", currentLayout->layout, currentLayout->variant);
 
     const char* path = "~/.config/layouts.conf";
-    int nLayouts = countFileLines(expandPath(path));
-    char layouts[nLayouts][MAX_LAYOUT_LENGTH+MAX_VARIANT_LENGTH];
-    parseLayouts(layouts, expandPath(path));
+    Layout* layouts = parseLayouts(expandPath(path));
 
-    printf("[DEBUG] Indexed %d layouts from `%s`\n", nLayouts, path);
-    for (int i = 0; i < nLayouts; i++) {
-        printf("    [*] %s\n", layouts[i]);
+    printf("[DEBUG] Indexed layouts from `%s`:\n", path);
+    Layout* temp = layouts;
+    while(temp != NULL) {
+        printf("    [*] %s-%s\n", temp->layout, temp->variant);
+        temp = temp->next;
     }
 
-    int index;
-    for (int i = 0; i < nLayouts; i++)
-        if (strcmp(current_layout, layouts[i]) == 0) {
-            index = i;
-            break;
-        }
-    free(current_layout);
+    temp = layouts;
+    while (temp != NULL) {
+        if (layoutCompare(currentLayout, temp) == 0) break;
+        temp = temp->next;
+    }
+    deallocateLayout(currentLayout);
 
-    printf("[DEBUG] Current index: %d\n", index);
-    if (++index == nLayouts) index = 0;
-    printf("[DEBUG] Next index: %d\n", index);
+    Layout* next_layout = temp->next;
+    if (!next_layout) next_layout = layouts;
 
-    char** new_layout = strsplitchr(layouts[index], '-');
-    setNewLayout(new_layout);
-
-    printf("[DEBUG] Set new layout `%s`\n", layouts[index]);
+    setNewLayout(next_layout);
+    printf("[DEBUG] Set new layout `%s-%s`\n", next_layout->layout, next_layout->variant);
 
     return 0;
 }

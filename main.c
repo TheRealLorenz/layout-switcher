@@ -7,6 +7,8 @@
 #include <string.h>
 #include "stringlib.h"
 
+int DEBUG = 0;
+
 #define MAX_LAYOUT_LENGTH 12 // Assuming the longest one is `nec_vndr/jp`
 #define MAX_VARIANT_LENGTH 27 // Assuming the longest one is `tifinagh-extended-phonetic`
 
@@ -179,16 +181,19 @@ int main() {
     currentLayout->variant = parseValue(stringa, "variant");
     free(stringa);
 
-    printf("[DEBUG] Current config: %s-%s\n", currentLayout->layout, currentLayout->variant);
+    if (DEBUG) printf("[DEBUG] Current config: %s-%s\n", currentLayout->layout, currentLayout->variant);
 
     const char* path = "~/.config/layouts.conf";
     Layout* layouts = parseLayouts(expandPath(path));
+    Layout* temp;
 
-    printf("[DEBUG] Indexed layouts from `%s`:\n", path);
-    Layout* temp = layouts;
-    while(temp != NULL) {
-        printf("    [*] %s-%s\n", temp->layout, temp->variant);
-        temp = temp->next;
+    if (DEBUG) {
+        printf("[DEBUG] Indexed layouts from `%s`:\n", path);
+        temp = layouts;
+        while(temp != NULL) {
+            printf("    [*] %s-%s\n", temp->layout, temp->variant);
+            temp = temp->next;
+        }
     }
 
     temp = layouts;
@@ -200,9 +205,14 @@ int main() {
 
     Layout* next_layout = temp->next;
     if (!next_layout) next_layout = layouts;
-
     setNewLayout(next_layout);
-    printf("[DEBUG] Set new layout `%s-%s`\n", next_layout->layout, next_layout->variant);
+
+    if (DEBUG) printf("[DEBUG] Set new layout `%s-%s`\n", next_layout->layout, next_layout->variant);
+
+    if (!next_layout->variant)
+        printf("Set `%s` layout\n", next_layout->layout);
+    else
+        printf("Set `%s-%s` layout\n", next_layout->layout, next_layout->variant);
 
     return 0;
 }

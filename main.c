@@ -8,6 +8,7 @@
 #include "stringlib.h"
 
 int DEBUG = 0;
+int EDIT = 0;
 
 #define MAX_LAYOUT_LENGTH 12 // Assuming the longest one is 'nec_vndr/jp'
 #define MAX_VARIANT_LENGTH 27 // Assuming the longest one is 'tifinagh-extended-phonetic'
@@ -113,7 +114,9 @@ char* expandPath(const char* path) {
     return expandedPath;
 }
 
-Layout* parseLayouts(const char* path) {
+Layout* parseLayouts(char* path) {
+    if (path[0] == '~') { path = expandPath(path); }
+
     FILE *f = fopen(path, "r");
     Layout* head = NULL;
     char line[MAX_LAYOUT_LENGTH+MAX_VARIANT_LENGTH];
@@ -176,8 +179,16 @@ void deallocateLayout(Layout* l) {
     free(l);
 }
 
+void editMode(char* path) {
+    printf("[DEBUG] Entering edit mode...\n");
+    Layout* layouts = parseLayouts(path);
+
+    // TODO: implement editMode
+    exit(0);
+}
+
 int main(int argc, char** argv) {
-    const char* path = "~/.config/layouts.conf";
+    char* path = "~/.config/layouts.conf";
 
     argv++;
     argc--;
@@ -188,16 +199,19 @@ int main(int argc, char** argv) {
             argv++;
             argc--;
             path = *argv;
-            if (DEBUG)
-                printf("updating pah to '%s'\n", path);
+            if (DEBUG) printf("updating pah to '%s'\n", path);
         } else if (strcmp(*argv, "--debug") == 0 || strcmp(*argv, "-d") == 0) {
             DEBUG = 1;
-            if (DEBUG)
-                printf("set DEBUG flag\n");
-        }
+            printf("[DEBUG] Parsing argument '%s': set DEBUG flag\n", *argv);
+        } else if (strcmp(*argv, "--edit") == 0 || strcmp(*argv, "-e") == 0) {
+            EDIT = 1;
+            if (DEBUG) printf("set EDIT flag\n");
+        } else if (DEBUG) printf("invalid argument\n");
         argv++;
         argc--;
     }
+
+    if (EDIT) editMode(path);
 
     char* stringa = getCurrentLayout();
     Layout* currentLayout = (Layout*)malloc(sizeof(Layout));
@@ -207,9 +221,7 @@ int main(int argc, char** argv) {
 
     if (DEBUG) printf("[DEBUG] Current config: %s-%s\n", currentLayout->layout, currentLayout->variant);
 
-    Layout* layouts;
-    if (path[0] == '~')  { layouts = parseLayouts(expandPath(path)); }
-    else  { layouts = parseLayouts(path); }
+    Layout* layouts = parseLayouts(path);
     Layout* temp;
 
     if (DEBUG) {

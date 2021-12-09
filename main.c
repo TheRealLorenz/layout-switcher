@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <pthread.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <errno.h>
@@ -9,6 +10,7 @@
 
 int DEBUG = 0;
 int EDIT = 0;
+char* path = "~/.config/layouts.conf";
 
 #define MAX_LAYOUT_LENGTH 12 // Assuming the longest one is 'nec_vndr/jp'
 #define MAX_VARIANT_LENGTH 27 // Assuming the longest one is 'tifinagh-extended-phonetic'
@@ -62,7 +64,7 @@ char* parseValue(const char* haystack, const char* needle) {
     return new_string;
 }
 
-char* getCurrentLayout() {
+char* getCurrentLayoutStr() {
     char stringa[1024];
     int link[2];
     pid_t pid;
@@ -114,7 +116,7 @@ char* expandPath(const char* path) {
     return expandedPath;
 }
 
-Layout* parseLayouts(char* path) {
+void* parseLayouts() {
     if (path[0] == '~') { path = expandPath(path); }
 
     FILE *f = fopen(path, "r");
@@ -148,7 +150,16 @@ Layout* parseLayouts(char* path) {
         }
     }
 
-    return head;
+    if (DEBUG) {
+        printf("[DEBUG] Indexed layouts from '%s':\n", path);
+        temp = head;
+        while(temp != NULL) {
+            printf("    [*] %s-%s\n", temp->layout, temp->variant);
+            temp = temp->next;
+        }
+    }
+
+    return (void *)head;
 }
 
 void setNewLayout(Layout* layout) {
@@ -181,14 +192,25 @@ void deallocateLayout(Layout* l) {
 
 void editMode(char* path) {
     printf("[DEBUG] Entering edit mode...\n");
-    Layout* layouts = parseLayouts(path);
+    //Layout* layouts = parseLayouts(path);
 
     // TODO: implement editMode
     exit(0);
 }
 
+void *getCurrentLayout(void *ptr) {
+    char* stringa = getCurrentLayoutStr();
+    ((Layout *)ptr)->layout = parseValue(stringa, "layout");
+    ((Layout *)ptr)->variant = parseValue(stringa, "variant");
+    free(stringa);
+    return NULL;
+}
+
 int main(int argc, char** argv) {
-    char* path = "~/.config/layouts.conf";
+    Layout* currentLayout = (Layout*)malloc(sizeof(Layout));
+
+    pthread_t thread1, thread2;
+    pthread_create(&thread1, NULL, getCurrentLayout, currentLayout);
 
     argv++;
     argc--;
@@ -211,28 +233,18 @@ int main(int argc, char** argv) {
         argc--;
     }
 
+    pthread_create(&thread2, NULL, parseLayouts, NULL);
+
     if (EDIT) editMode(path);
 
-    char* stringa = getCurrentLayout();
-    Layout* currentLayout = (Layout*)malloc(sizeof(Layout));
-    currentLayout->layout = parseValue(stringa, "layout");
-    currentLayout->variant = parseValue(stringa, "variant");
-    free(stringa);
-
+    pthread_join(thread1, NULL);
     if (DEBUG) printf("[DEBUG] Current config: %s-%s\n", currentLayout->layout, currentLayout->variant);
 
-    Layout* layouts = parseLayouts(path);
+    void *ret;
+    pthread_join(thread2, &ret);
+
+    Layout* layouts = (Layout *)ret;
     Layout* temp;
-
-    if (DEBUG) {
-        printf("[DEBUG] Indexed layouts from '%s':\n", path);
-        temp = layouts;
-        while(temp != NULL) {
-            printf("    [*] %s-%s\n", temp->layout, temp->variant);
-            temp = temp->next;
-        }
-    }
-
     temp = layouts;
     while (temp != NULL) {
         if (layoutCompare(currentLayout, temp) == 0) break;

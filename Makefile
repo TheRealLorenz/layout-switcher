@@ -1,5 +1,5 @@
 layout-switcher: main.o stringlib.o
-	gcc main.o stringlib.o -o layout-switcher
+	gcc main.o stringlib.o -o layout-switcher -lpthread
 main.o: main.c
 	gcc -c main.c
 stringlib.o: stringlib.c

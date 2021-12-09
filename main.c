@@ -207,11 +207,13 @@ void *getCurrentLayout(void *ptr) {
 }
 
 int main(int argc, char** argv) {
-    Layout* currentLayout = (Layout*)malloc(sizeof(Layout));
+    Layout currentLayout;
 
     pthread_t thread1, thread2;
-    pthread_create(&thread1, NULL, getCurrentLayout, currentLayout);
+    // Get current kb layout
+    pthread_create(&thread1, NULL, getCurrentLayout, &currentLayout);
 
+    // Parse commandline args
     argv++;
     argc--;
     while(argc > 0) {
@@ -233,43 +235,48 @@ int main(int argc, char** argv) {
         argc--;
     }
 
+    // Parse kb layouts
     pthread_create(&thread2, NULL, parseLayouts, NULL);
 
+    // Run edit mode
     if (EDIT) editMode(path);
 
+    // Join get kb layout
     pthread_join(thread1, NULL);
-    if (DEBUG) printf("[DEBUG] Current config: %s-%s\n", currentLayout->layout, currentLayout->variant);
+    if (DEBUG) printf("[DEBUG] Current config: %s-%s\n", currentLayout.layout, currentLayout.variant);
 
+    // Join parse kb layouts
     void *ret;
     pthread_join(thread2, &ret);
-
     Layout* layouts = (Layout *)ret;
+
+    // Find corresponding layout going through the list
     Layout* temp;
     temp = layouts;
     while (temp != NULL) {
-        if (layoutCompare(currentLayout, temp) == 0) break;
+        if (layoutCompare(&currentLayout, temp) == 0) break;
         temp = temp->next;
     }
-    deallocateLayout(currentLayout);
 
+    // Get next layout
     Layout* next_layout = temp->next;
     if (!next_layout) next_layout = layouts;
-    setNewLayout(next_layout);
 
+    // Set next layout
+    setNewLayout(next_layout);
     if (DEBUG) printf("[DEBUG] Set new layout '%s-%s'\n", next_layout->layout, next_layout->variant);
 
-    char* body = (char*)malloc(100);
-    if (!next_layout->variant) {
-        printf("Set '%s' layout\n", next_layout->layout);
-        sprintf(body, "Switching to %s", next_layout->layout);
-    }
-    else {
-        printf("Set '%s-%s' layout\n", next_layout->layout, next_layout->variant);
-        sprintf(body, "Switching to %s-%s", next_layout->layout, next_layout->variant);
+    // Create update message
+    char body[15 + MAX_LAYOUT_LENGTH + MAX_VARIANT_LENGTH];
+    sprintf(body, "Switching layout to %s", next_layout->layout);
+    if (next_layout->variant) {
+        strcat(body, "-");
+        strcat(body, next_layout->variant);
     }
 
+    // Notify changes with update message
+    printf("%s\n", body);
     execlp("notify-send", "notify-send", "Layout Switcher", body, "-t", "2000", (char*)0);
-    free(body);
 
     return 0;
 }

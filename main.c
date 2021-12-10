@@ -1,23 +1,23 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <errno.h>
 #include <string.h>
 #include "stringlib.h"
+#include "checklib.h"
 
 int DEBUG = 0;
 int EDIT = 0;
-char* path = "~/.config/layouts.conf";
+char *path = "~/.config/layouts.conf";
 
 #define MAX_LAYOUT_LENGTH 12 // Assuming the longest one is 'nec_vndr/jp'
 #define MAX_VARIANT_LENGTH 27 // Assuming the longest one is 'tifinagh-extended-phonetic'
 
 typedef struct Layout {
-    char* layout;
-    char* variant;
+    char *layout;
+    char *variant;
     struct Layout* next;
 } Layout;
 
@@ -37,26 +37,28 @@ int layoutCompare(const Layout* l1, const Layout* l2) {
     return 0;
 }
 
+void deallocateLayout(Layout* l) {
+    free(l->layout);
+    free(l->variant);
+    free(l);
+}
+
 /*
  * Returns a char pointer to a string from the needle to '\n' or '\0'.
  *
  * Returns 'NULL' if the needle cannot be found in the haystack
  */
-char* parseValue(const char* haystack, const char* needle) {
-    char* beginning_of_word = strstr(haystack, needle);
+char *parseValue(const char *haystack, const char *needle) {
+    char *beginning_of_word = strstr(haystack, needle);
     if (beginning_of_word == NULL) return NULL;
 
-    char* new_line = strchr(beginning_of_word, '\n');
-    char* last_space = new_line;
+    char *new_line = strchr(beginning_of_word, '\n');
+    char *last_space = new_line;
     while(*last_space != ' ') last_space--;
     
     int n = new_line - last_space - 1;
-    
-    char* new_string = (char*) malloc((n+1)*sizeof(char));
-    if (new_string == NULL) {
-        fprintf(stderr, "An error occurred while using malloc! ERROR: %s\n", strerror(errno));
-        exit(1);
-    }
+    char *new_string = (char *)malloc(n+1);
+    check_malloc(new_string);
 
     strncpy(new_string, last_space+1, n);
     new_string[n] = '\0';
@@ -64,7 +66,7 @@ char* parseValue(const char* haystack, const char* needle) {
     return new_string;
 }
 
-char* getCurrentLayoutStr() {
+char *getCurrentLayoutStr() {
     char stringa[1024];
     int link[2];
     pid_t pid;
@@ -75,11 +77,7 @@ char* getCurrentLayoutStr() {
     }
 
     pid = fork();
-
-    if (pid == -1) {
-        fprintf(stderr, "An error occurred while trying to fork! ERROR: %s\n", strerror(errno));
-        exit(1);
-    }
+    check_pid(pid);
 
     if (pid == 0) {
         // figlio
@@ -95,7 +93,8 @@ char* getCurrentLayoutStr() {
     int nbytes = read(link[0], stringa, 1024);
     wait(NULL);
 
-    char* new_string = (char*) malloc(nbytes+1);
+    char *new_string = (char *)malloc(nbytes+1);
+    check_malloc(new_string);
     strncpy(new_string, stringa, nbytes);
     new_string[nbytes] = '\0';
 
@@ -106,11 +105,12 @@ char* getCurrentLayoutStr() {
  * Expands the given path using the HOME env variable
  *
  */
-char* expandPath(const char* path) {
-    const char* home = getenv("HOME");
+char *expandPath(const char *path) {
+    const char *home = getenv("HOME");
     path++;
     int n = strlen(path) + strlen(home);
-    char* expandedPath = (char*) malloc(n+1);
+    char *expandedPath = (char *)malloc(n+1);
+    check_malloc(expandPath);
     strncpy(expandedPath, home, strlen(home)+1);
     strncat(expandedPath, path, strlen(path)+1);
     return expandedPath;
@@ -120,9 +120,6 @@ void* parseLayouts() {
     if (path[0] == '~') { path = expandPath(path); }
 
     FILE *f = fopen(path, "r");
-    Layout* head = NULL;
-    char line[MAX_LAYOUT_LENGTH+MAX_VARIANT_LENGTH];
-
     if (f == NULL) {
         if (errno == 2) {
             fprintf(stderr, "'%s' doesn't exist!\n", path);
@@ -132,6 +129,8 @@ void* parseLayouts() {
         exit(1);
     }
 
+    char line[MAX_LAYOUT_LENGTH+MAX_VARIANT_LENGTH];
+    Layout* head = NULL;
     Layout* temp;
     while(fgets(line, sizeof(line), f)) {
         line[strlen(line) - 1] = '\0';
@@ -139,15 +138,19 @@ void* parseLayouts() {
 
         if (!head) {
             head = (Layout*)malloc(sizeof(Layout));
+            check_malloc(head);
             head->layout = split[0];
             head->variant = split[1];
             temp = head;
         } else {
             temp->next = (Layout*)malloc(sizeof(Layout));
+            check_malloc(temp);
             temp = temp->next;
             temp->layout = split[0];
             temp->variant = split[1];
         }
+
+        free(split);
     }
 
     if (DEBUG) {
@@ -164,11 +167,7 @@ void* parseLayouts() {
 
 void setNewLayout(Layout* layout) {
     pid_t pid = fork();
-
-        if (pid == -1) {
-        fprintf(stderr, "An error occurred while trying to fork! ERROR: %s\n", strerror(errno));
-        exit(1);
-    }
+    check_pid(pid);
 
     if (pid == 0) {
         // figlio
@@ -184,13 +183,7 @@ void setNewLayout(Layout* layout) {
     wait(NULL);
 }
 
-void deallocateLayout(Layout* l) {
-    free(l->layout);
-    free(l->variant);
-    free(l);
-}
-
-void editMode(char* path) {
+void editMode(char *path) {
     printf("[DEBUG] Entering edit mode...\n");
     //Layout* layouts = parseLayouts(path);
 
@@ -199,7 +192,7 @@ void editMode(char* path) {
 }
 
 void *getCurrentLayout(void *ptr) {
-    char* stringa = getCurrentLayoutStr();
+    char *stringa = getCurrentLayoutStr();
     ((Layout *)ptr)->layout = parseValue(stringa, "layout");
     ((Layout *)ptr)->variant = parseValue(stringa, "variant");
     free(stringa);
@@ -208,7 +201,6 @@ void *getCurrentLayout(void *ptr) {
 
 int main(int argc, char** argv) {
     Layout currentLayout;
-
     pthread_t thread1, thread2;
     // Get current kb layout
     pthread_create(&thread1, NULL, getCurrentLayout, &currentLayout);
